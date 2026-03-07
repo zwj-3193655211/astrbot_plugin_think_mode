@@ -34,7 +34,12 @@ class ThinkModePlugin(Star):
         self._data_dir = StarTools.get_data_dir(self.name)
         self._state_file = self._data_dir / "think_state.json"
         self._think_mode = self._load_state()
+        # 读取配置
+        self._default_mode = self.config.get("default_think_mode", False)
+        self._global_mode = self.config.get("global_mode", False)
         logger.info(f"[think_mode] 插件已加载，数据目录：{self._data_dir}")
+        logger.info(f"[think_mode] 默认思考模式: {'开启' if self._default_mode else '关闭'}")
+        logger.info(f"[think_mode] 全局模式: {'开启' if self._global_mode else '关闭'}")
         logger.info(f"[think_mode] 当前已记录 {len(self._think_mode)} 个用户的思考模式状态")
 
     def _load_state(self) -> dict:
@@ -63,9 +68,15 @@ class ThinkModePlugin(Star):
         return re.sub(r'[^a-zA-Z0-9_\-]', '_', user_id)
 
     def _get_user_think_mode(self, user_id: str) -> bool:
-        """获取用户当前的思考模式，默认 False（非思考模式）"""
+        """获取用户当前的思考模式
+        
+        如果开启了全局模式，则使用配置中的默认值
+        否则使用用户的个人设置，无设置时使用默认值
+        """
+        if self._global_mode:
+            return self._default_mode
         user_id = self._sanitize_user_id(user_id)
-        return self._think_mode.get(user_id, False)
+        return self._think_mode.get(user_id, self._default_mode)
 
     def _set_user_think_mode(self, user_id: str, mode: bool):
         """设置用户思考模式并持久化"""

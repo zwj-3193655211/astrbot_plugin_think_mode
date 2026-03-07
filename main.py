@@ -18,8 +18,7 @@ import re
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Star, register, Context, StarTools
-from astrbot.api import logger
-from astrbot.api.config import AstrBotConfig
+from astrbot.api import logger, AstrBotConfig
 
 
 @register("astrbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")

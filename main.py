@@ -1,5 +1,5 @@
 """
-astbot_plugin_think_mode
+astrbot_plugin_think_mode
 思考模式切换插件 - 支持 /think 和 /no_think 命令
 
 功能：
@@ -21,7 +21,7 @@ from astrbot.api.star import Star, register, Context, StarTools
 from astrbot.api import logger
 
 
-@register("astbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")
+@register("astrbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")
 class ThinkModePlugin(Star):
     """思考模式切换插件
     

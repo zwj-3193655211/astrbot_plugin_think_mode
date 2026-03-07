@@ -19,6 +19,7 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Star, register, Context, StarTools
 from astrbot.api import logger
+from astrbot.api.config import AstrBotConfig
 
 
 @register("astrbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")
@@ -29,8 +30,9 @@ class ThinkModePlugin(Star):
     支持命令切换和消息内联切换两种方式。
     """
     
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config
         self._data_dir = StarTools.get_data_dir(self.name)
         self._state_file = self._data_dir / "think_state.json"
         self._think_mode = self._load_state()

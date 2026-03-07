@@ -3,5 +3,5 @@ display_name: 思考模式切换
 desc: 控制 Ollama 模型的思考模式，支持 /think 和 /no_think 命令切换，默认为非思考模式
 version: 1.0.0
 author: zwj-3193655211
-repo: https://github.com/zwj-3193655211/astrbot_plugin_think_mode
+repo: https://github.com/zwj-3193655211/astrbot_plugin_think_mode.git
 astrbot_version: ">=4.16"

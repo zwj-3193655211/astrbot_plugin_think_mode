@@ -1,5 +1,5 @@
 """
-astrbot_plugin_think_mode
+astbot_plugin_think_mode
 思考模式切换插件 - 支持 /think 和 /no_think 命令
 
 功能：
@@ -21,7 +21,7 @@ from astrbot.api.star import Star, register, Context, StarTools
 from astrbot.api import logger
 
 
-@register("astrbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")
+@register("astbot_plugin_think_mode", "AstrBot", "思考模式切换插件", "1.0.0")
 class ThinkModePlugin(Star):
     """思考模式切换插件
     
@@ -102,14 +102,12 @@ class ThinkModePlugin(Star):
 
     @filter.on_llm_request()
     async def inject_think_mode(self, event: AstrMessageEvent, req: ProviderRequest):
-        """在 LLM 请求前注入思考模式标记
+        """在 LLM 请求前注入思考模式参数
         
         此钩子在每次 LLM 请求前被调用，用于：
         1. 检测消息中的内联命令（/think 或 /no_think）
-        2. 根据用户当前状态在系统提示中注入 /think 或 /no_think 标记
-        
-        Ollama 支持通过在提示中添加 /think 或 /no_think 标记来控制思考模式，
-        这是一种不依赖 API 参数的通用方式。
+        2. 通过修改 Provider 的 custom_extra_body 注入 think 参数
+        3. 同时在系统提示中注入标记作为备选方案
         """
         user_id = event.get_sender_id()
         message = event.message_str or ""
@@ -126,19 +124,31 @@ class ThinkModePlugin(Star):
         # 获取当前思考模式状态
         current_mode = self._get_user_think_mode(user_id)
 
-        # 通过系统提示注入思考模式标记
-        # Ollama 支持在 system 或 user prompt 中使用 /think /no_think 切换模式
+        # 方式一：通过修改 Provider 的 custom_extra_body 注入 think 参数
+        # 这适用于 Ollama 等 Provider，会将 extra_body 参数传递给 API
+        try:
+            provider = self.context.get_using_provider(event.unified_msg_origin)
+            if provider and hasattr(provider, 'provider_config'):
+                custom_extra_body = provider.provider_config.get('custom_extra_body', {})
+                if not isinstance(custom_extra_body, dict):
+                    custom_extra_body = {}
+                # 设置 think 参数
+                custom_extra_body['think'] = current_mode
+                provider.provider_config['custom_extra_body'] = custom_extra_body
+                logger.debug(f"[think_mode] 已设置 Provider custom_extra_body['think'] = {current_mode}")
+        except Exception as e:
+            logger.warning(f"[think_mode] 设置 Provider custom_extra_body 失败: {e}")
+
+        # 方式二：通过系统提示注入思考模式标记（作为备选方案）
+        # 部分模型支持通过提示中的 /think /no_think 标记切换模式
         if current_mode:
-            # 启用思考模式
             think_marker = "\n\n/think"
         else:
-            # 禁用思考模式（默认）
             think_marker = "\n\n/no_think"
         
-        # 追加到系统提示
         req.system_prompt = (req.system_prompt or "") + think_marker
 
-        logger.debug(f"[think_mode] 用户 {user_id} 注入思考标记: {'/think' if current_mode else '/no_think'}")
+        logger.debug(f"[think_mode] 用户 {user_id} 思考模式: {current_mode}")
 
     @filter.command("think")
     async def cmd_think(self, event: AstrMessageEvent):

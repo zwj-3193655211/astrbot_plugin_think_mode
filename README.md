@@ -57,8 +57,16 @@ git clone git@github.com:zwj-3193655211/astrbot_plugin_think_mode.git
 ## 工作原理
 
 1. **状态存储**：按用户 ID 存储，持久化到 `data/plugin_data/astrbot_plugin_think_mode/think_state.json`
-2. **注入方式**：在系统提示末尾追加 `/think` 或 `/no_think` 标记
-3. **默认状态**：非思考模式
+2. **注入方式**：
+   - 通过修改 Provider 的 `custom_extra_body` 配置注入 `think` 参数（适用于 Ollama API）
+   - 同时在系统提示中注入 `/think` 或 `/no_think` 标记（作为备选方案）
+3. **默认状态**：非思考模式（`think: false`）
+
+## 注意事项
+
+- **适用 Provider**：Ollama（通过 OpenAI 兼容 API）
+- **适用模型**：Qwen3、DeepSeek-R1 等支持思考的模型
+- 该插件会动态修改 Provider 的 `custom_extra_body` 配置
 
 ## 配置
 

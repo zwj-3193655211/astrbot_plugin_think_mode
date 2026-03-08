@@ -112,14 +112,56 @@ class ThinkModePlugin(Star):
 
         return think_mode, cleaned_message
 
+    def _is_ollama_native_provider(self, provider) -> bool:
+        """检查是否为 Ollama 原生 Provider
+        
+        Ollama 原生 API (/api/chat) 支持 think 参数，
+        OpenAI 兼容 API (/v1/chat/completions) 不支持。
+        """
+        if provider is None:
+            return False
+        
+        # 检查 Provider 类型名称
+        provider_type = type(provider).__name__
+        if provider_type == "ProviderOllamaNative":
+            return True
+        
+        # 检查 provider_config 中的 type
+        provider_config = getattr(provider, 'provider_config', {})
+        provider_type_name = provider_config.get('type', '')
+        if provider_type_name == 'ollama_native':
+            return True
+        
+        return False
+
+    def _is_openai_compatible_ollama(self, provider) -> bool:
+        """检查是否为 OpenAI 兼容 API 连接 Ollama
+        
+        这种情况下 think 参数不生效。
+        """
+        if provider is None:
+            return False
+        
+        provider_config = getattr(provider, 'provider_config', {})
+        api_base = provider_config.get('api_base', '')
+        provider_type = provider_config.get('type', '')
+        
+        # 检查是否使用 OpenAI 兼容 API 连接本地 Ollama
+        if provider_type == 'openai_chat_completion':
+            if '11434' in api_base and '/v1' in api_base:
+                return True
+        
+        return False
+
     @filter.on_llm_request()
     async def inject_think_mode(self, event: AstrMessageEvent, req: ProviderRequest):
         """在 LLM 请求前注入思考模式参数
         
         此钩子在每次 LLM 请求前被调用，用于：
         1. 检测消息中的内联命令（/think 或 /no_think）
-        2. 通过修改 Provider 的 custom_extra_body 注入 think 参数
-        3. 同时在系统提示中注入标记作为备选方案
+        2. 检测 Provider 类型并选择合适的注入方式
+        3. 对于 Ollama 原生 Provider，通过 custom_extra_body 注入 think 参数
+        4. 对于 OpenAI 兼容 API，给出警告（不支持 think 参数）
         """
         user_id = event.get_sender_id()
         message = event.message_str or ""
@@ -136,24 +178,49 @@ class ThinkModePlugin(Star):
         # 获取当前思考模式状态
         current_mode = self._get_user_think_mode(user_id)
 
-        # 方式一：通过修改 Provider 的 custom_extra_body 注入 think 参数
-        # 这适用于 Ollama 等 Provider，会将 extra_body 参数传递给 API
         try:
             provider = self.context.get_using_provider(event.unified_msg_origin)
-            if provider and hasattr(provider, 'provider_config'):
-                # 获取当前的 custom_extra_body（复制一份，避免影响原始配置）
-                custom_extra_body = dict(provider.provider_config.get('custom_extra_body', {}))
-                # 设置 think 参数
-                custom_extra_body['think'] = current_mode
-                provider.provider_config['custom_extra_body'] = custom_extra_body
-                logger.info(f"[think_mode] 已设置 custom_extra_body = {custom_extra_body}")
-                logger.info(f"[think_mode] Provider type: {type(provider).__name__}, api_base: {provider.provider_config.get('api_base', 'N/A')}")
+            
+            # 检查 Provider 类型
+            if self._is_ollama_native_provider(provider):
+                # Ollama 原生 API - 支持 think 参数
+                if provider and hasattr(provider, 'provider_config'):
+                    custom_extra_body = dict(provider.provider_config.get('custom_extra_body', {}))
+                    custom_extra_body['think'] = current_mode
+                    provider.provider_config['custom_extra_body'] = custom_extra_body
+                    logger.info(f"[think_mode] Ollama 原生 API - 已设置 think={current_mode}")
+            
+            elif self._is_openai_compatible_ollama(provider):
+                # OpenAI 兼容 API 连接 Ollama - 不支持 think 参数
+                # 只在首次检测时警告
+                if not hasattr(self, '_warned_openai_compatible'):
+                    self._warned_openai_compatible = True
+                    logger.warning(
+                        "[think_mode] 检测到使用 OpenAI 兼容 API (/v1) 连接 Ollama，"
+                        "该端点不支持 think 参数！思考模式切换将不生效。\n"
+                        "请在配置中将 Provider 类型从 'openai_chat_completion' 改为 'ollama_native'，"
+                        "并将 api_base 从 'http://127.0.0.1:11434/v1' 改为 'http://127.0.0.1:11434'"
+                    )
+                
+                # 仍然尝试设置（以防万一某些版本支持）
+                if provider and hasattr(provider, 'provider_config'):
+                    custom_extra_body = dict(provider.provider_config.get('custom_extra_body', {}))
+                    custom_extra_body['think'] = current_mode
+                    provider.provider_config['custom_extra_body'] = custom_extra_body
+                    logger.debug(f"[think_mode] OpenAI 兼容 API - 尝试设置 think={current_mode}（可能不生效）")
+            
             else:
-                logger.warning(f"[think_mode] 未找到 Provider 或 provider_config 属性")
+                # 其他 Provider - 尝试设置 think 参数
+                if provider and hasattr(provider, 'provider_config'):
+                    custom_extra_body = dict(provider.provider_config.get('custom_extra_body', {}))
+                    custom_extra_body['think'] = current_mode
+                    provider.provider_config['custom_extra_body'] = custom_extra_body
+                    logger.debug(f"[think_mode] 已设置 custom_extra_body = {custom_extra_body}")
+                    
         except Exception as e:
             logger.error(f"[think_mode] 设置 Provider custom_extra_body 失败: {e}")
 
-        # 方式二：通过系统提示注入思考模式标记（作为备选方案）
+        # 通过系统提示注入思考模式标记（作为备选方案）
         # 部分模型支持通过提示中的 /think /no_think 标记切换模式
         if current_mode:
             think_marker = "\n\n/think"
